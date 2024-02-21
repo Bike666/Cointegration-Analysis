@@ -1,0 +1,137 @@
+---
+title: "Time series analysis of the relationship between stock and interest rate"
+output: word_document
+date: "2023-06-07"
+---
+```{r ,echo = FALSE, warning=FALSE}
+Sys.setenv(LANG = "en")
+options(scipen = 99)
+getwd()
+setwd("E:\\AAA Warsaw University\\The 2nd semester\\Advanced Econometrics Cwiczenia\\Final_project")
+library(sandwich)
+library(xts)
+library(lmtest) 
+library(fBasics) 
+library(urca) 
+library("lmtest")
+
+source("function_testdf2.R")
+
+
+```
+
+
+```{r , echo = FALSE, warning=FALSE}
+stock_interest_rate <- read.csv("stock_interest_rate.csv")
+head(stock_interest_rate)
+tail(stock_interest_rate)
+stock_interest_rate$Date <- as.Date(stock_interest_rate$Date, format = "%Y-%m-%d")
+
+```
+
+
+```{r,echo = FALSE, warning=FALSE}
+stock_interest_rate <- xts(stock_interest_rate[,-1], stock_interest_rate$Date)
+
+
+plot(stock_interest_rate$Close, ylim = c(0,5000), 
+     main = 'Stock close price ')
+
+plot(stock_interest_rate$Interst_rate, ylim = c(-0.03,0.08), 
+     main = 'Interest rate')
+
+```
+ we can see from plots that stock price is not look like stationary time seriers, but interest rate could be a stationary time series. In this case we use Augmented Dickey-Fuller Test and Breusch-Godfrey Test to check if those 2 time series are stationary ,and do  residuals have autocorrelation to check if the resulat of Augmented Dickey-Fuller Test is valid.
+# stationarity tests
+
+```{r,echo = FALSE,warning=FALSE }
+
+testdf2(variable = stock_interest_rate$Close, test.type = "c", max.augmentations = 12, max.order = 12)# because its month so we choose max.augmentations is 12 here 
+
+testdf2(variable = stock_interest_rate$Interst_rate, test.type = "c", max.augmentations = 12, max.order = 12)
+
+
+```
+ we can see from the result of 8th line about stock price,when each Breusch-Godfrey Test P value is graeather than 5% which means the residuals do not have autocorrelation, the Augmented Dickey-Fuller Test is 0.8234268, so we do not reject the null hypothesis which the stock price of order 0 is non-stationary. We can see from the first line of result of interest rate, when all Breusch-Godfrey Test are above 5%, the Augmented Dickey-Fuller Test is 0.1,so we do not reject the null hypothesis, the interest rate time serier of order 0 is non-stationary.So next step is check the stock price and interest rate of order 1 if is stationaty.
+
+
+```{r ,echo=FALSE, warning=FALSE}
+
+stock_interest_rate$dClose <- diff.xts(stock_interest_rate$Close)
+testdf2(variable = stock_interest_rate$dClose, test.type = "c", max.augmentations = 12, max.order = 12)
+stock_interest_rate$dInterst_rate <- diff.xts(stock_interest_rate$Interst_rate)
+testdf2(variable = stock_interest_rate$dInterst_rate, test.type = "c", max.augmentations = 12, max.order = 12)
+
+
+```
+ The result shows that it is stationary order 1 of stock price , we can see from the 7th line that each Breusch-Godfrey Test P value is graeather than 5% which means the residuals do not have autocorrelation, the Augmented Dickey-Fuller Test is 0.01, so we reject the null hypothesis , choose the altertive hypothesis that the time series is stattionay of order 1 . And the we can see the from the 1st line of interest rate of order 1 that each Breusch-Godfrey Test P value is graeather than 5% which means the residuals do not have autocorrelation, the Augmented Dickey-Fuller Test is 0.01, so we reject the null hypothesis , choose the altertive hypothesis that the time series is stattionay of order 1 . So both time series are non-stationary of order 0 but both time series are stationary of order 1. So we will bulid the linear model to check the residuls if stationary.
+```{r ,echo = FALSE, warning=FALSE}
+model.coint <- lm(Close~Interst_rate, data = stock_interest_rate)
+summary(model.coint)
+```
+ The model shows that the Interst rate is significant, because the p vaule is much lower then 5% threshold.So we continue anilizing.
+```{r ,echo = FALSE, warning=FALSE}
+# length of residuals
+length(residuals(model.coint))
+# rejection interval
+-(4.31+4.19)/2
+testdf2(variable = residuals(model.coint), test.type="c",
+       max.augmentations = 7, max.order = 7)
+
+```
+ the number of obsevations are 453, the static vaule of residual is -1.26 is lager than -4.25, so we do not reject the null htpothiese , so the residuals are non-stationy , stock price and interest rate are not cointegrated. 
+
+So we should finshing the cointegration anilizy , but in the case of whole project, we will treat stock price and interest rate are cointegrated to do futher anilizy. 
+
+```{r,echo = FALSE, warning=FALSE }
+stock_interest_rate$lresid <- lag.xts(residuals(model.coint))
+
+```
+
+```{r,echo = FALSE, warning=FALSE }
+model.ecm <- lm(dClose ~dInterst_rate  + lresid - 1, 
+               
+                data = stock_interest_rate) 
+
+summary(model.ecm)
+```
+In this case we can see that the coefficients of Interst_rate is -48559.75 which means that in the short term when interest rate increase 1 , the stock price will decrease 48559.75. In the long term when interst rate increase 1 the stock price will decrease 1464.51,-0.008 means that if there is a shock , the system itself will be corrected in 125 (1/0.008) periods.
+```{r,echo = FALSE, warning=FALSE }
+residuals1 <- residuals(model.ecm)  
+shapiro.test(residuals1)  # 进行Shapiro-Wilk检验
+
+
+```
+
+```{r,echo = FALSE, warning=FALSE }
+#Ramsey-Reset
+reset_test <- resettest(model.coint)
+reset_test
+
+
+```
+
+```{r,echo = FALSE, warning=FALSE }
+# Perform Breusch-Pagan's test
+bp_test <- bptest(model.coint)
+bp_test
+
+
+```
+
+
+```{r,echo = FALSE, warning=FALSE }
+#Ramsey-Reset
+reset_test <- resettest(model.ecm)
+reset_test
+```
+Becasue its much lower 5% p vaule.The model is not ok
+```{r,echo = FALSE, warning=FALSE }
+# Perform Breusch-Pagan's test
+bp_test <- bptest(model.ecm)
+bp_test
+
+
+```
+since p-value is < 0.00000000000000022.  the p-value is  less than 0.05, we reject the null hypothesis. We could have sufficient evidence to say that heteroscedasticity is present in the model.So the result maybe not reliable.But it can be understandable from the resulat Ramsey-Reset test and resulat of Breusch-Pagan's test that even stock price and interest rate are not even cointegrated.
+
